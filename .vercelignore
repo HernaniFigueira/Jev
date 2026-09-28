@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+.jev_clones/
+.git/
+*.pyc
+.DS_Store

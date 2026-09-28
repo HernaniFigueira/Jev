@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>JEV Project Analyzer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+      },
+      colors: {
+        ink: {
+          950: '#0a0b14',
+          900: '#0f1120',
+          800: '#161a2e',
+          700: '#1f2440',
+          600: '#2a3155',
+        },
+        accent: {
+          400: '#7dd3fc',
+          500: '#38bdf8',
+          600: '#0ea5e9',
+        },
+        agora: '#10b981',
+        depois: '#f59e0b',
+        naousar: '#ef4444',
+      },
+      boxShadow: {
+        glow: '0 0 0 1px rgba(56,189,248,.35), 0 10px 40px -10px rgba(56,189,248,.35)',
+      }
+    }
+  }
+}
+</script>
+<style>
+  html, body { background: radial-gradient(1200px 600px at 10% -10%, rgba(56,189,248,.08), transparent 60%), #0a0b14; color:#e6e9f5; }
+  .glass { background: rgba(22,26,46,0.6); border:1px solid rgba(255,255,255,0.06); backdrop-filter: blur(8px); }
+  .card { background: linear-gradient(180deg, rgba(31,36,64,0.7), rgba(22,26,46,0.7)); border:1px solid rgba(255,255,255,0.06); }
+  .chip { border:1px solid rgba(255,255,255,0.08); }
+  .btn { transition: all .15s ease; }
+  .btn:hover { transform: translateY(-1px); }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .ring-focus:focus { outline: none; box-shadow: 0 0 0 2px rgba(56,189,248,.5); }
+  .jev-node { fill:#38bdf8; }
+  .jev-glow { filter: drop-shadow(0 0 8px rgba(56,189,248,.55)); }
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display:none; }
+  .fade-in { animation: fadeIn .3s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform:none;} }
+  .scrollbar::-webkit-scrollbar { width:8px; height:8px;}
+  .scrollbar::-webkit-scrollbar-thumb { background:#2a3155; border-radius:8px;}
+  .score-ring { transform: rotate(-90deg); }
+</style>
+</head>
+<body class="font-sans min-h-screen">
+
+<div class="max-w-7xl mx-auto px-5 py-8">
+  <!-- Header -->
+  <header class="flex items-center justify-between mb-10">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-500 grid place-items-center shadow-glow">
+        <span class="text-white font-black text-lg">J</span>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold tracking-tight">JEV Project Analyzer</h1>
+        <p class="text-sm text-slate-400">Decida onde IA realmente vale — e onde não usar</p>
+      </div>
+    </div>
+    <div class="hidden md:flex items-center gap-2 text-xs text-slate-400">
+      <span class="chip rounded-full px-3 py-1 bg-ink-800">v1.0 • MVP</span>
+      <span class="chip rounded-full px-3 py-1 bg-ink-800">Análise estática • read-only</span>
+    </div>
+  </header>
+
+  <!-- Welcome / Input -->
+  <section id="inputSection" class="card rounded-2xl p-6 md:p-8 mb-8">
+    <div class="grid md:grid-cols-5 gap-6 items-start">
+      <div class="md:col-span-2">
+        <h2 class="text-2xl font-bold mb-2">Analise um projeto</h2>
+        <p class="text-slate-400 text-sm leading-relaxed mb-4">
+          Informe uma URL pública do GitHub ou um caminho local. A ferramenta faz análise
+          estática (somente leitura), entende a arquitetura, detecta fluxos de decisão e
+          avalia onde JEV pode trazer ROI real — e onde ele deve ser evitado.
+        </p>
+        <div class="text-xs text-slate-500 space-y-1">
+          <div>✅ Nenhum arquivo é modificado</div>
+          <div>✅ Nenhum commit/push/PR</div>
+          <div>✅ Nenhuma chave ou segredo lido (.env é ignorado)</div>
+          <div>⚠️ Repositórios privados do GitHub exigem clone local (sem credenciais)</div>
+        </div>
+      </div>
+      <div class="md:col-span-3">
+        <label class="block text-sm font-medium text-slate-300 mb-2">Projeto para analisar</label>
+        <div class="flex gap-2">
+          <input id="sourceInput" type="text"
+                 class="ring-focus flex-1 rounded-xl bg-ink-900 border border-white/10 px-4 py-3 text-sm mono"
+                 placeholder="https://github.com/owner/repo  ou  owner/repo  ou  /caminho/local" />
+          <button id="analyzeBtn" class="btn rounded-xl bg-sky-500 hover:bg-sky-400 text-ink-950 font-semibold px-5 py-3 text-sm">
+            Analisar
+          </button>
+        </div>
+        <div class="flex gap-2 mt-3 flex-wrap text-xs">
+          <button class="sample-btn chip rounded-lg px-3 py-1.5 text-slate-300 hover:bg-white/5" data-sample="/home/user/Jev">Testar este próprio repositório</button>
+          <button class="sample-btn chip rounded-lg px-3 py-1.5 text-slate-300 hover:bg-white/5" data-sample="pallets/flask">Exemplo: pallets/flask (GitHub)</button>
+        </div>
+        <div id="errorBox" class="hidden mt-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm px-4 py-3"></div>
+        <div id="loadingBox" class="hidden mt-3 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-200 text-sm px-4 py-3 flex items-center gap-3">
+          <div class="w-4 h-4 rounded-full border-2 border-sky-400 border-t-transparent animate-spin"></div>
+          <span id="loadingText">Analisando projeto…</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Dashboard -->
+  <main id="dashboard" class="hidden fade-in space-y-8"></main>
+
+  <!-- Prompt Modal -->
+  <div id="promptModal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm grid place-items-center p-4">
+    <div class="glass rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-white/10">
+        <div>
+          <div class="text-xs uppercase tracking-wider text-slate-400">Prompt de implementação</div>
+          <h3 id="promptTitle" class="text-lg font-semibold"></h3>
+        </div>
+        <div class="flex gap-2">
+          <button id="copyPromptBtn" class="btn rounded-lg bg-sky-500 hover:bg-sky-400 text-ink-950 text-sm font-semibold px-4 py-2">Copiar prompt</button>
+          <button id="closePromptBtn" class="btn rounded-lg bg-white/5 hover:bg-white/10 text-slate-200 text-sm px-4 py-2">Fechar</button>
+        </div>
+      </div>
+      <pre id="promptBody" class="scrollbar overflow-auto mono text-xs leading-relaxed text-slate-200 p-6 whitespace-pre-wrap"></pre>
+    </div>
+  </div>
+
+  <footer class="mt-16 text-center text-xs text-slate-500">
+    JEV Project Analyzer • Análise estática heurística • Nenhum dado sai do seu ambiente
+  </footer>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
