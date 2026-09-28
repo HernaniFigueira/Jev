@@ -1,6 +1,7 @@
 """FastAPI server for JEV Project Analyzer."""
 from __future__ import annotations
 
+import mimetypes
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8,8 +9,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from .analyzer.evaluator import build_report
@@ -37,9 +37,6 @@ app.add_middleware(
 class StoredAnalysis:
     id: str
     report: AnalysisReport
-    # We keep the scan result available so the prompt builder can verify file existence.
-    # For MVP we store the report (fully sufficient for dashboard) and a set of
-    # file paths that existed at scan time, to filter affected files.
     existing_files: set[str] = field(default_factory=set)
 
 
@@ -67,7 +64,6 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
         report = build_report(scan, source_type=resolved.source_type, source_path=resolved.source_label)
 
         if resolved.source_type == "github":
-            # Warn that clone is temporary
             report.warnings.append(
                 "Análise de repositório do GitHub feita por clone raso (depth=1). "
                 "Apenas repositórios públicos funcionam sem credenciais. "
@@ -83,7 +79,6 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
         )
         return AnalyzeResponse(analysis_id=analysis_id, counts=report.summary())
     except Exception as e:
-        # Cleanup if needed
         try:
             resolved.cleanup()
         except Exception:
@@ -107,13 +102,11 @@ def get_prompt(analysis_id: str, opp_index: int) -> dict[str, Any]:
     if opp_index < 0 or opp_index >= len(stored.report.opportunities):
         raise HTTPException(status_code=404, detail="Índice de oportunidade inválido.")
 
-    # Build a minimal fake scan result containing only the existing files set
-    # so the prompt builder filters affected files correctly.
     class _MiniScan:
         def __init__(self, files_rel: set[str]):
             self._files_rel = files_rel
 
-        def rel(self, p):  # noqa: D401
+        def rel(self, p):
             return str(p) if not isinstance(p, str) else p
 
         @property
@@ -133,13 +126,39 @@ def health() -> dict[str, Any]:
     return {"status": "ok", "analyses": len(_store)}
 
 
-# ---- Static frontend ----
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# ---- Static frontend (manual, no aiofiles dependency, robust on serverless) ----
+def _serve_static(rel_path: str) -> Response:
+    # Protect against path traversal
+    safe = rel_path.replace("\\", "/").lstrip("/")
+    if ".." in safe.split("/"):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    file_path = (STATIC_DIR / safe).resolve()
+    try:
+        file_path.relative_to(STATIC_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    mime, _ = mimetypes.guess_type(str(file_path))
+    return FileResponse(str(file_path), media_type=mime or "application/octet-stream")
 
-    @app.get("/")
-    def index() -> FileResponse:
-        return FileResponse(str(STATIC_DIR / "index.html"))
+
+@app.get("/")
+def index() -> Response:
+    return _serve_static("index.html")
+
+
+@app.get("/static/{file_path:path}")
+def static_files(file_path: str) -> Response:
+    return _serve_static(file_path)
+
+
+@app.get("/favicon.ico")
+def favicon() -> Response:
+    f = STATIC_DIR / "favicon.ico"
+    if f.is_file():
+        return FileResponse(str(f))
+    return Response(status_code=204)
 
 
 if __name__ == "__main__":
